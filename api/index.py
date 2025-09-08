@@ -1,86 +1,66 @@
-# api/index.py - Vercel serverless function handler (FastAPI + Mangum)
-from fastapi import FastAPI, Query
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
+import json
 import httpx
-from typing import Optional
-import logging
 
-# Mangum adapts ASGI apps (FastAPI) to AWS Lambda event handler style,
-# which Vercel's python runtime expects.
-from mangum import Mangum
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Create FastAPI instance
-app = FastAPI(title="PokéAPI Gateway (Vercel)")
-
-# Configure CORS (allow all origins for this challenge)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Constants
 POKEAPI_BASE_URL = "https://pokeapi.co/api/v2"
-TIMEOUT_SECONDS = 5  # shorter timeout for serverless environment
+TIMEOUT_SECONDS = 5
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return JSONResponse(content={"status": "ok"}, status_code=200)
+def handler(request, response):
+    path = request.path
+    method = request.method
 
-@app.get("/pokemon-info")
-async def get_pokemon_info(name: Optional[str] = Query(None, description="Pokemon name")):
-    """Get simplified Pokemon information"""
-    if not name:
-        return JSONResponse(content={"error": "Pokemon name is required"}, status_code=400)
+    # Health check
+    if path == "/health" and method == "GET":
+        response.status_code = 200
+        response.headers["Content-Type"] = "application/json"
+        response.body = json.dumps({"status": "ok"})
+        return response
 
-    pokemon_name = name.lower().strip()
+    # Pokemon info
+    if path.startswith("/pokemon-info") and method == "GET":
+        query_params = request.query
+        name = query_params.get("name")
+        if not name:
+            response.status_code = 400
+            response.headers["Content-Type"] = "application/json"
+            response.body = json.dumps({"error": "Pokemon name is required"})
+            return response
 
-    try:
-        # Create client per-request (serverless-friendly)
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-            response = await client.get(f"{POKEAPI_BASE_URL}/pokemon/{pokemon_name}")
+        pokemon_name = name.lower().strip()
+        try:
+            r = httpx.get(f"{POKEAPI_BASE_URL}/pokemon/{pokemon_name}", timeout=TIMEOUT_SECONDS)
+            if r.status_code == 404:
+                response.status_code = 404
+                response.headers["Content-Type"] = "application/json"
+                response.body = json.dumps({"error": "Pokemon not found"})
+                return response
 
-            if response.status_code == 404:
-                return JSONResponse(content={"error": "Pokemon not found"}, status_code=404)
-
-            response.raise_for_status()
-            pokemon_data = response.json()
-
+            r.raise_for_status()
+            data = r.json()
             simplified_data = {
-                "name": pokemon_data["name"],
-                "type": pokemon_data["types"][0]["type"]["name"] if pokemon_data.get("types") else None,
-                "height": pokemon_data.get("height"),
-                "weight": pokemon_data.get("weight"),
-                "first_ability": pokemon_data["abilities"][0]["ability"]["name"] if pokemon_data.get("abilities") else None,
+                "name": data["name"],
+                "type": data["types"][0]["type"]["name"] if data.get("types") else None,
+                "height": data.get("height"),
+                "weight": data.get("weight"),
+                "first_ability": data["abilities"][0]["ability"]["name"] if data.get("abilities") else None,
             }
-            return JSONResponse(content=simplified_data, status_code=200)
+            response.status_code = 200
+            response.headers["Content-Type"] = "application/json"
+            response.body = json.dumps(simplified_data)
+            return response
 
-    except httpx.TimeoutException:
-        logger.exception("Timeout while fetching Pokemon: %s", pokemon_name)
-        return JSONResponse(content={"error": "Service temporarily unavailable"}, status_code=503)
-    except httpx.HTTPStatusError as e:
-        # if upstream responded with error (non-2xx)
-        if e.response is not None and e.response.status_code == 404:
-            return JSONResponse(content={"error": "Pokemon not found"}, status_code=404)
-        logger.exception("HTTP error from upstream: %s", e)
-        return JSONResponse(content={"error": "External API error"}, status_code=502)
-    except Exception as e:
-        logger.exception("Unexpected error while fetching Pokemon: %s", e)
-        return JSONResponse(content={"error": "Internal server error"}, status_code=500)
+        except httpx.RequestError:
+            response.status_code = 503
+            response.headers["Content-Type"] = "application/json"
+            response.body = json.dumps({"error": "Service temporarily unavailable"})
+            return response
+        except Exception:
+            response.status_code = 500
+            response.headers["Content-Type"] = "application/json"
+            response.body = json.dumps({"error": "Internal server error"})
+            return response
 
-# Catch-all for undefined routes
-@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
-async def catch_all(path: str):
-    return JSONResponse(content={"error": "Endpoint not found"}, status_code=404)
-
-# Create Mangum handler which Vercel will call.
-# Vercel's Python runtime will import this file and invoke the handler.
-handler = Mangum(app)
+    # Catch-all
+    response.status_code = 404
+    response.headers["Content-Type"] = "application/json"
+    response.body = json.dumps({"error": "Endpoint not found"})
+    return response
