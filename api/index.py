@@ -22,10 +22,9 @@ TIMEOUT_SECONDS = 5
 async def welcome():
     return {
         "message": "Welcome to the PokéAPI Gateway!",
-        "docs": "/docs",
         "endpoints": {
-            "health": "/health",
-            "pokemon_info": "/pokemon-info?name=pikachu"
+            "/health": "Check service health",
+            "/pokemon-info?name={pokemon_name}": "Get simplified Pokémon info by name",
         }
     }
 
