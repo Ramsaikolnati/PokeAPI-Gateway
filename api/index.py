@@ -3,7 +3,6 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 from typing import Optional
-from mangum import Mangum  # ✅ Added
 
 app = FastAPI(title="PokéAPI Gateway")
 
@@ -25,8 +24,12 @@ async def health_check():
 
 @app.get("/pokemon-info")
 async def get_pokemon_info(name: Optional[str] = Query(None)):
-    if not name:
+    if not name or not name.strip():
         return JSONResponse(content={"error": "Pokemon name is required"}, status_code=400)
+
+    # Reject numeric-only input or uppercase input
+    if name.isdigit() or name.isupper():
+        return JSONResponse({"error": "Invalid Pokémon name"}, status_code=400)
 
     pokemon_name = name.lower().strip()
     try:
@@ -48,6 +51,3 @@ async def get_pokemon_info(name: Optional[str] = Query(None)):
         return JSONResponse({"error": "Service temporarily unavailable"}, status_code=503)
     except Exception:
         return JSONResponse({"error": "Internal server error"}, status_code=500)
-
-# ✅ Add this for Vercel (serverless handler)
-handler = Mangum(app)
