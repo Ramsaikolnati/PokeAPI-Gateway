@@ -18,6 +18,17 @@ app.add_middleware(
 POKEAPI_BASE_URL = "https://pokeapi.co/api/v2"
 TIMEOUT_SECONDS = 5
 
+@app.get("/")
+async def welcome():
+    return {
+        "message": "Welcome to the PokéAPI Gateway!",
+        "docs": "/docs",
+        "endpoints": {
+            "health": "/health",
+            "pokemon_info": "/pokemon-info?name=pikachu"
+        }
+    }
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
