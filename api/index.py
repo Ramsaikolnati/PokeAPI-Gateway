@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 from typing import Optional
+from mangum import Mangum  # ✅ Added
 
 app = FastAPI(title="PokéAPI Gateway")
 
@@ -47,3 +48,6 @@ async def get_pokemon_info(name: Optional[str] = Query(None)):
         return JSONResponse({"error": "Service temporarily unavailable"}, status_code=503)
     except Exception:
         return JSONResponse({"error": "Internal server error"}, status_code=500)
+
+# ✅ Add this for Vercel (serverless handler)
+handler = Mangum(app)
