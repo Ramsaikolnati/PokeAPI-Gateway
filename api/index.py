@@ -30,10 +30,14 @@ async def welcome():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+        """Health check endpoint."""
+        return {"status": "ok"}
 
 @app.get("/pokemon-info")
 async def get_pokemon_info(name: Optional[str] = Query(None)):
+    """Fetch simplified Pokemon data from PokéAPI.
+    Validates input, queries the external API, and returns a slimmed JSON object.
+    """
     if not name or not name.strip():
         return JSONResponse(content={"error": "Pokemon name is required"}, status_code=400)
 

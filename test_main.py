@@ -1,24 +1,15 @@
+# test_main.py
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, Mock, AsyncMock
 import httpx
-
-# Try importing from main.py first, fallback to index.py for Vercel
-try:
-    from main import app
-except ImportError:
-    from index import app
+from main import app
 
 client = TestClient(app)
 
 
 class TestPokemonAPI:
-    def test_health(self):
-        response = client.get("/health")
-        assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
-
-    @patch("httpx.AsyncClient")
+    @patch("main.httpx.AsyncClient")
     def test_get_pokemon_success(self, mock_client_class):
         mock_response = AsyncMock()
         mock_response.status_code = 200
@@ -45,29 +36,13 @@ class TestPokemonAPI:
             "first_ability": "limber",
         }
 
-    @patch("httpx.AsyncClient")
-    def test_pokemon_uppercase_name(self, mock_client_class):
-        mock_response = AsyncMock()
-        mock_response.status_code = 200
-        mock_response.json = Mock(return_value={
-            "name": "pikachu",
-            "types": [{"type": {"name": "electric"}}],
-            "height": 4,
-            "weight": 60,
-            "abilities": [{"ability": {"name": "static"}}],
-        })
-        mock_response.raise_for_status = Mock()
-
-        mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
-        mock_client_class.return_value.__aenter__.return_value = mock_client
-
+    def test_pokemon_uppercase_name_rejected(self):
+        # now uppercase input should return 400
         response = client.get("/pokemon-info?name=PIKACHU")
-        assert response.status_code == 200
-        assert response.json()["name"] == "pikachu"
-        assert response.json()["type"] == "electric"
+        assert response.status_code == 400
+        assert response.json() == {"error": "Invalid Pokémon name"}
 
-    @patch("httpx.AsyncClient")
+    @patch("main.httpx.AsyncClient")
     def test_pokemon_not_found(self, mock_client_class):
         mock_response = AsyncMock()
         mock_response.status_code = 404
@@ -83,19 +58,14 @@ class TestPokemonAPI:
 
         response = client.get("/pokemon-info?name=fakepokemon")
         assert response.status_code == 404
-        assert "error" in response.json()
-        assert response.json()["error"] in ["Pokemon not found", "External API error"]
+        assert response.json() == {"error": "Pokemon not found"}
 
-    def test_invalid_pokemon_name(self):
-        # Only index.py has regex validation, but test should still work
-        response = client.get("/pokemon-info?name=123@@")
-        if response.status_code == 400:
-            assert response.json() == {"error": "Invalid Pokemon name"}
-        else:
-            # main.py will pass this to PokeAPI, which may return 404
-            assert response.status_code in [400, 404]
+    def test_health(self):
+        response = client.get("/health")
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
 
-    @patch("httpx.AsyncClient")
+    @patch("main.httpx.AsyncClient")
     def test_timeout_error(self, mock_client_class):
         mock_client = AsyncMock()
         mock_client.get.side_effect = httpx.TimeoutException("Timeout")
@@ -105,7 +75,7 @@ class TestPokemonAPI:
         assert response.status_code == 503
         assert response.json() == {"error": "Service temporarily unavailable"}
 
-    @patch("httpx.AsyncClient")
+    @patch("main.httpx.AsyncClient")
     def test_unexpected_error(self, mock_client_class):
         mock_client = AsyncMock()
         mock_client.get.side_effect = Exception("Unexpected error")
@@ -113,4 +83,4 @@ class TestPokemonAPI:
 
         response = client.get("/pokemon-info?name=pikachu")
         assert response.status_code == 500
-        assert "error" in response.json()
+        assert response.json() == {"error": "Internal server error"}
