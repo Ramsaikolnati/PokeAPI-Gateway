@@ -9,7 +9,7 @@ from typing import Optional
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="PokéAPI Gateway (Local)")
+app = FastAPI(title="PokéAPI Gateway")
 
 # Enable CORS for all origins
 app.add_middleware(
